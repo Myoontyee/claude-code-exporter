@@ -30,5 +30,8 @@ jobs:
           files: '*.vsix'
           generate_release_notes: true
 
+      - name: Create Open VSX namespace (if needed)
+        run: npx ovsx create-namespace myoontyee -p ${{ secrets.OVSX_PAT }} || true
+
       - name: Publish to Open VSX (for Cursor)
-        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }} --allow-create-namespace
+        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}

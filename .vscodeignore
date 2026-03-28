@@ -1,7 +1,6 @@
 **/*
 !dist/extension.js
 !dist/extension.js.map
+!images/icon.png
 !package.json
 !LICENSE
-!.vscode/launch.json
-!.vscode/tasks.json

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D97757;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C4613F;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.95" />
+      <stop offset="100%" style="stop-color:#FFF5F0;stop-opacity:0.9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="4" y="4" width="248" height="248" rx="48" ry="48" fill="url(#bg)" />
+
+  <!-- Chat bubble -->
+  <path d="M 60 68
+           Q 60 52, 76 52
+           L 180 52
+           Q 196 52, 196 68
+           L 196 140
+           Q 196 156, 180 156
+           L 112 156
+           L 88 180
+           L 88 156
+           L 76 156
+           Q 60 156, 60 140 Z"
+        fill="url(#bubble)" />
+
+  <!-- Three chat lines inside bubble -->
+  <rect x="80" y="74" width="96" height="8" rx="4" fill="#D97757" opacity="0.7" />
+  <rect x="80" y="94" width="72" height="8" rx="4" fill="#D97757" opacity="0.5" />
+  <rect x="80" y="114" width="84" height="8" rx="4" fill="#D97757" opacity="0.35" />
+
+  <!-- Export arrow (bottom-right) -->
+  <g transform="translate(160, 148)">
+    <!-- Arrow circle background -->
+    <circle cx="28" cy="28" r="32" fill="#FFFFFF" opacity="0.95" />
+    <!-- Down arrow shaft -->
+    <rect x="22" y="10" width="12" height="24" rx="3" fill="#C4613F" />
+    <!-- Arrow head -->
+    <polygon points="14,32 28,48 42,32" fill="#C4613F" />
+    <!-- Bottom line (tray) -->
+    <rect x="12" y="50" width="32" height="5" rx="2.5" fill="#C4613F" opacity="0.6" />
+  </g>
+</svg>

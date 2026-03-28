@@ -7,9 +7,27 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["claude", "claude-code", "ai", "chat", "export", "markdown"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "chat",
+    "export",
+    "markdown",
+    "history"
+  ],
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Myoontyee/claude-code-exporter"
+  },
+  "license": "MIT",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -121,7 +139,10 @@
         "claudeCodeExporter.exportFormat": {
           "type": "string",
           "default": "readable",
-          "enum": ["readable", "compact"],
+          "enum": [
+            "readable",
+            "compact"
+          ],
           "enumDescriptions": [
             "Rich Markdown with metadata table, collapsible tool calls — for archiving and human reading.",
             "Clean Human/Claude format, tool calls as one-line summaries — for pasting back into Claude as context."
@@ -156,8 +177,9 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.3.0",
-    "@vscode/vsce": "^2.24.0"
+    "sharp": "^0.34.5",
+    "typescript": "^5.3.0"
   }
 }

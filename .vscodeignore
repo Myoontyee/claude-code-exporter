@@ -1,6 +1,7 @@
-dist
-node_modules
-.vscode-test
-src
-**/*.ts
-!dist/**
+**/*
+!dist/extension.js
+!dist/extension.js.map
+!package.json
+!LICENSE
+!.vscode/launch.json
+!.vscode/tasks.json

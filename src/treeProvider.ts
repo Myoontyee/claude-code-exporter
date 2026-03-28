@@ -1,25 +1,10 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import { scanProjectsDir, groupByProject, parseSessionFile } from './parser';
-import { MarkdownExporter } from './exporter';
+import { parseSessionFile, TextBlock } from './parser';
+import { MarkdownExporter, ExportOptions } from './exporter';
 
-// ─── Tree item types ──────────────────────────────────────────────────────────
-
-export class ProjectItem extends vscode.TreeItem {
-  constructor(
-    public readonly projectDir: string,
-    public readonly projectName: string,
-    public readonly sessionFiles: string[]
-  ) {
-    super(projectName, vscode.TreeItemCollapsibleState.Collapsed);
-    this.tooltip = projectDir;
-    this.iconPath = new vscode.ThemeIcon('folder');
-    this.contextValue = 'project';
-    this.description = `${sessionFiles.length} session${sessionFiles.length !== 1 ? 's' : ''}`;
-  }
-}
+// ─── Tree items ─────────────────────────────────────────────────────────────
 
 export class SessionItem extends vscode.TreeItem {
   constructor(
@@ -33,130 +18,111 @@ export class SessionItem extends vscode.TreeItem {
     this.description = description;
     this.contextValue = 'session';
     this.iconPath = new vscode.ThemeIcon(
-      exportedPath && fs.existsSync(exportedPath)
-        ? 'check'
-        : 'circle-outline'
+      exportedPath && fs.existsSync(exportedPath) ? 'check' : 'circle-outline'
     );
-
-    // Click to open the exported markdown (if it exists)
     if (exportedPath && fs.existsSync(exportedPath)) {
       this.command = {
         command: 'claudeCodeExporter.openSession',
-        title: 'Open Session',
+        title: 'Open',
         arguments: [exportedPath],
       };
     }
   }
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Provider ───────────────────────────────────────────────────────────────
 
 export class SessionTreeProvider
   implements vscode.TreeDataProvider<vscode.TreeItem>
 {
-  private _onDidChangeTreeData = new vscode.EventEmitter<
-    vscode.TreeItem | undefined | null | void
-  >();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-  private projectGroups: Map<string, string[]> = new Map();
+  private _onChange = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this._onChange.event;
 
   constructor(
-    private readonly projectsDir: string,
+    private claudeProjectDir: string,
+    private workspaceRoot: string,
     private readonly exporter: MarkdownExporter
-  ) {
-    this.loadSessions();
+  ) {}
+
+  /** Update dirs if workspace or mapping changes */
+  setDirs(claudeProjectDir: string, workspaceRoot: string): void {
+    this.claudeProjectDir = claudeProjectDir;
+    this.workspaceRoot = workspaceRoot;
+    this._onChange.fire();
   }
 
   refresh(): void {
-    this.loadSessions();
-    this._onDidChangeTreeData.fire();
-  }
-
-  private loadSessions(): void {
-    const files = scanProjectsDir(this.projectsDir);
-    this.projectGroups = groupByProject(files);
+    this._onChange.fire();
   }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
-  getChildren(element?: vscode.TreeItem): vscode.TreeItem[] {
-    if (!element) {
-      // Root: list all projects
-      const items: ProjectItem[] = [];
-      for (const [dir, files] of this.projectGroups) {
-        const name = path.basename(dir);
-        const humanName = formatProjectName(name);
-        items.push(new ProjectItem(dir, humanName, files));
-      }
-      // Sort by project name
-      items.sort((a, b) => a.projectName.localeCompare(b.projectName));
-      return items;
+  getChildren(): vscode.TreeItem[] {
+    if (!this.claudeProjectDir || !fs.existsSync(this.claudeProjectDir)) {
+      return [
+        new vscode.TreeItem('No Claude sessions found for this workspace'),
+      ];
     }
 
-    if (element instanceof ProjectItem) {
-      return this.buildSessionItems(element.sessionFiles);
+    const files = fs
+      .readdirSync(this.claudeProjectDir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => path.join(this.claudeProjectDir, f));
+
+    if (files.length === 0) {
+      return [new vscode.TreeItem('No sessions yet')];
     }
 
-    return [];
-  }
-
-  private buildSessionItems(files: string[]): SessionItem[] {
     const items: SessionItem[] = [];
-    // opts not needed here; resolveOutputPath calls getOptions internally
+    const ccHistory = path.join(this.workspaceRoot, '.cc-history');
 
     for (const file of files) {
       try {
-        const stat = fs.statSync(file);
-        const sessionId = path.basename(file, '.jsonl');
-        const shortId = sessionId.split('-')[0];
+        const session = parseSessionFile(file);
+        const shortId = session.sessionId.split('-')[0];
 
-        // Try to get the first user message as a label
+        // Find first user text as label
         let label = `Session ${shortId}`;
-        let startTime = '';
-        try {
-          const session = parseSessionFile(file);
-          startTime = session.startTime
-            ? formatShortDate(session.startTime)
-            : '';
-          // Find first non-empty user text
-          for (const msg of session.messages) {
-            if (msg.role === 'user') {
-              for (const b of msg.blocks) {
-                if (b.type === 'text' && (b as any).text?.trim()) {
-                  label = truncate((b as any).text.trim(), 50);
-                  break;
-                }
+        for (const msg of session.messages) {
+          if (msg.role === 'user') {
+            for (const b of msg.blocks) {
+              if (b.type === 'text' && (b as TextBlock).text?.trim()) {
+                label = truncate((b as TextBlock).text.trim(), 50);
+                break;
               }
-              break;
             }
+            break;
           }
-
-          // Check if export exists
-          const exportedPath = this.exporter.resolveOutputPath(
-            session,
-            this.exporter.getOptions()
-          );
-
-          items.push(
-            new SessionItem(file, exportedPath, label, startTime)
-          );
-        } catch {
-          items.push(new SessionItem(file, undefined, label, startTime));
         }
+
+        const date = session.startTime
+          ? new Date(session.startTime).toLocaleDateString()
+          : '';
+
+        // Check if already exported
+        let exportedPath: string | undefined;
+        if (fs.existsSync(ccHistory)) {
+          const existing = fs
+            .readdirSync(ccHistory)
+            .find((f) => f.includes(shortId) && f.endsWith('.md'));
+          if (existing) exportedPath = path.join(ccHistory, existing);
+        }
+
+        items.push(new SessionItem(file, exportedPath, label, date));
       } catch {
         // skip unreadable
       }
     }
 
-    // Sort by modification time (newest first)
+    // Sort newest first
     items.sort((a, b) => {
       try {
-        const ta = fs.statSync(a.sessionFilePath).mtimeMs;
-        const tb = fs.statSync(b.sessionFilePath).mtimeMs;
-        return tb - ta;
+        return (
+          fs.statSync(b.sessionFilePath).mtimeMs -
+          fs.statSync(a.sessionFilePath).mtimeMs
+        );
       } catch {
         return 0;
       }
@@ -166,25 +132,7 @@ export class SessionTreeProvider
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatProjectName(dirName: string): string {
-  const match = dirName.match(/^([a-zA-Z])--(.+)$/);
-  if (match) {
-    return `${match[1]}:\\${match[2].replace(/-/g, '\\')}`;
-  }
-  return dirName;
-}
-
-function formatShortDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return '';
-  }
-}
-
-function truncate(str: string, maxLen: number): string {
+function truncate(str: string, max: number): string {
   str = str.replace(/\s+/g, ' ').trim();
-  return str.length <= maxLen ? str : str.slice(0, maxLen - 1) + '…';
+  return str.length <= max ? str : str.slice(0, max - 1) + '…';
 }

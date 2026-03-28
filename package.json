@@ -2,7 +2,7 @@
   "name": "claude-code-exporter",
   "displayName": "Claude Code Exporter",
   "description": "Auto-export Claude Code CLI conversations to Markdown files. Watches ~/.claude/projects/ and keeps your chat history as readable .md files.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "your-publisher-id",
   "engines": {
     "vscode": "^1.85.0"
@@ -113,25 +113,20 @@
     "configuration": {
       "title": "Claude Code Exporter",
       "properties": {
-        "claudeCodeExporter.outputDirectory": {
-          "type": "string",
-          "default": "",
-          "description": "Directory to save exported Markdown files. Leave empty to be prompted on first export."
-        },
         "claudeCodeExporter.autoExport": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically export conversations when they are updated."
+          "description": "Automatically export conversations to .cc-history/ when updated."
         },
         "claudeCodeExporter.exportFormat": {
           "type": "string",
           "default": "readable",
           "enum": ["readable", "compact"],
           "enumDescriptions": [
-            "Rich Markdown with metadata table, collapsible tool calls — best for human reading and archiving.",
-            "Clean Human/Assistant format with minimal noise — best for pasting back into Claude as context."
+            "Rich Markdown with metadata table, collapsible tool calls — for archiving and human reading.",
+            "Clean Human/Claude format, tool calls as one-line summaries — for pasting back into Claude as context."
           ],
-          "description": "Export format: 'readable' for archiving, 'compact' for feeding back to Claude."
+          "description": "Export format."
         },
         "claudeCodeExporter.includeThinking": {
           "type": "boolean",
@@ -141,22 +136,12 @@
         "claudeCodeExporter.includeToolDetails": {
           "type": "boolean",
           "default": true,
-          "description": "Include tool call details (collapsed) in exports. Only applies to 'readable' format."
+          "description": "Include tool call details (collapsed in readable, one-line in compact)."
         },
         "claudeCodeExporter.claudeProjectsDir": {
           "type": "string",
           "default": "",
           "description": "Path to Claude Code projects directory. Defaults to ~/.claude/projects."
-        },
-        "claudeCodeExporter.filenameFormat": {
-          "type": "string",
-          "default": "{date}_{project}_{sessionId}",
-          "description": "Filename format for exported files. Variables: {project}, {date}, {sessionId}."
-        },
-        "claudeCodeExporter.groupByProject": {
-          "type": "boolean",
-          "default": true,
-          "description": "Group exported files into subdirectories by project name."
         }
       }
     }

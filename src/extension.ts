@@ -7,350 +7,304 @@ import { SessionTreeProvider, SessionItem } from './treeProvider';
 import { FileWatcher } from './watcher';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const claudeProjectsDir = getClaudeProjectsDir();
-  const exporter = new MarkdownExporter(context);
-  const treeProvider = new SessionTreeProvider(claudeProjectsDir, exporter);
+  const claudeProjectsBase = getClaudeProjectsBase();
+  const exporter = new MarkdownExporter();
 
-  // ─── Sidebar tree view ────────────────────────────────────────────────────
+  // ─── Match current workspace to its Claude project dir ────────────────────
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const claudeProjectDir = workspaceRoot
+    ? findClaudeProjectDir(claudeProjectsBase, workspaceRoot)
+    : '';
+
+  // ─── Tree view (shows this workspace's sessions) ─────────────────────────
+  const treeProvider = new SessionTreeProvider(
+    claudeProjectDir, workspaceRoot, exporter
+  );
   const treeView = vscode.window.createTreeView('claudeCodeExporterSessions', {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
   });
 
-  // ─── File watcher ─────────────────────────────────────────────────────────
-  const watcher = new FileWatcher(claudeProjectsDir, exporter, treeProvider);
-  watcher.start();
+  // ─── File watcher (auto-export on JSONL change) ───────────────────────────
+  let watcher: FileWatcher | undefined;
+  if (claudeProjectDir && workspaceRoot) {
+    watcher = new FileWatcher(claudeProjectDir, workspaceRoot, exporter, treeProvider);
+    watcher.start();
+  }
 
   // ─── Status bar ───────────────────────────────────────────────────────────
   const statusBar = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right, 100
   );
   statusBar.command = 'claudeCodeExporter.exportMenu';
-  statusBar.tooltip = 'Claude Code Exporter — click to export';
-  updateStatusBar(statusBar, claudeProjectsDir);
+  statusBar.tooltip = 'Claude Code Exporter';
+  updateStatusBar(statusBar, claudeProjectDir);
   statusBar.show();
+
+  // ─── Re-match when workspace folders change ───────────────────────────────
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      const newRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const newDir = newRoot ? findClaudeProjectDir(claudeProjectsBase, newRoot) : '';
+      treeProvider.setDirs(newDir, newRoot);
+
+      watcher?.dispose();
+      if (newDir && newRoot) {
+        watcher = new FileWatcher(newDir, newRoot, exporter, treeProvider);
+        watcher.start();
+      }
+      updateStatusBar(statusBar, newDir);
+    })
+  );
 
   // ─── Commands ─────────────────────────────────────────────────────────────
   context.subscriptions.push(
     // Refresh
     vscode.commands.registerCommand('claudeCodeExporter.refresh', () => {
       treeProvider.refresh();
-      updateStatusBar(statusBar, claudeProjectsDir);
+      updateStatusBar(statusBar, claudeProjectDir);
     }),
 
-    // 【新】导出菜单 — 点一个按钮选单个还是批量
+    // Export menu — single vs batch, format choice
     vscode.commands.registerCommand('claudeCodeExporter.exportMenu', async () => {
-      const choice = await vscode.window.showQuickPick(
-        [
-          {
-            label: '$(cloud-download)  Export All Sessions',
-            description: 'Export every conversation across all projects',
-            value: 'all',
-          },
-          {
-            label: '$(export)  Export Current Project Only',
-            description: 'Export sessions for the currently open workspace project',
-            value: 'current',
-          },
-          {
-            label: '$(list-selection)  Choose Format Before Exporting',
-            description: 'Pick readable (archive) or compact (paste to Claude) format',
-            value: 'format',
-          },
-        ],
-        { placeHolder: 'What do you want to export?' }
-      );
-
-      if (!choice) return;
-
-      if (choice.value === 'format') {
-        await pickFormatThenExport(exporter, claudeProjectsDir, treeProvider, statusBar);
+      if (!claudeProjectDir || !workspaceRoot) {
+        vscode.window.showWarningMessage(
+          'No Claude Code sessions found for the current workspace.'
+        );
         return;
       }
 
-      let targetDir = claudeProjectsDir;
-      if (choice.value === 'current') {
-        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!cwd) {
-          vscode.window.showWarningMessage('No workspace folder open.');
-          return;
-        }
-        // Find matching project dir
-        const encoded = encodePath(cwd);
-        const candidate = path.join(claudeProjectsDir, encoded);
-        if (!fs.existsSync(candidate)) {
-          vscode.window.showWarningMessage(
-            `No Claude sessions found for this workspace.\nExpected: ${candidate}`
-          );
-          return;
-        }
-        targetDir = candidate;
+      const choice = await vscode.window.showQuickPick([
+        {
+          label: '$(cloud-download)  Export All Sessions',
+          description: `Export all sessions to ${workspaceRoot}/.cc-history/`,
+          value: 'all',
+        },
+        {
+          label: '$(settings-gear)  Change Format, Then Export All',
+          description: 'Pick readable or compact format first',
+          value: 'format',
+        },
+        {
+          label: '$(folder-opened)  Open .cc-history/ Folder',
+          description: 'Reveal the export folder in the file explorer',
+          value: 'open',
+        },
+      ], { placeHolder: 'Claude Code Exporter' });
+
+      if (!choice) return;
+
+      if (choice.value === 'open') {
+        openCcHistory(workspaceRoot);
+        return;
       }
 
-      await runExportAll(exporter, targetDir, treeProvider, statusBar);
+      if (choice.value === 'format') {
+        const fmt = await pickFormat();
+        if (!fmt) return;
+        await vscode.workspace.getConfiguration('claudeCodeExporter')
+          .update('exportFormat', fmt, vscode.ConfigurationTarget.Global);
+      }
+
+      await doExportAll(exporter, claudeProjectDir, workspaceRoot, treeProvider);
     }),
 
-    // 【新】选择输出文件夹
-    vscode.commands.registerCommand(
-      'claudeCodeExporter.setOutputDirectory',
-      async () => {
-        const picked = await vscode.window.showOpenDialog({
-          canSelectFiles: false,
-          canSelectFolders: true,
-          canSelectMany: false,
-          title: 'Choose folder to save exported conversations',
-          openLabel: 'Set as Export Folder',
-        });
-        if (!picked || picked.length === 0) return;
-        const chosen = picked[0].fsPath;
-        await vscode.workspace
-          .getConfiguration('claudeCodeExporter')
-          .update('outputDirectory', chosen, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`Export folder set to: ${chosen}`);
-        treeProvider.refresh();
-      }
-    ),
+    // Set output directory (for global/custom export, secondary feature)
+    vscode.commands.registerCommand('claudeCodeExporter.setOutputDirectory', async () => {
+      vscode.window.showInformationMessage(
+        'Exports are saved to .cc-history/ inside your workspace by default. ' +
+        'To override, set "claudeCodeExporter.outputDirectory" in settings.'
+      );
+    }),
 
-    // Open export folder in OS
+    // Open export folder
     vscode.commands.registerCommand('claudeCodeExporter.openExportFolder', () => {
-      openOutputFolder(exporter);
+      if (workspaceRoot) openCcHistory(workspaceRoot);
     }),
 
-    // Export single session (from tree item)
-    vscode.commands.registerCommand(
-      'claudeCodeExporter.exportSession',
+    // Export single session (from tree item context menu)
+    vscode.commands.registerCommand('claudeCodeExporter.exportSession',
       async (item: SessionItem | string) => {
         const filePath = typeof item === 'string' ? item : item.sessionFilePath;
+        if (!workspaceRoot) {
+          vscode.window.showWarningMessage('No workspace open.');
+          return;
+        }
 
-        // Ask format
-        const fmt = await vscode.window.showQuickPick(
-          [
-            { label: '$(book)  Readable', description: 'Rich Markdown — good for archiving and human reading', value: 'readable' },
-            { label: '$(comment)  Compact', description: 'Clean Human/Claude format — good for pasting back into Claude', value: 'compact' },
-          ],
-          { placeHolder: 'Export format?' }
-        );
+        const fmt = await pickFormat();
         if (!fmt) return;
 
         try {
-          const outPath = await exporter.exportSession(filePath, {
-            exportFormat: fmt.value as 'readable' | 'compact',
-          });
+          const outPath = exporter.exportSessionToWorkspace(
+            filePath, workspaceRoot, { exportFormat: fmt }
+          );
           treeProvider.refresh();
           vscode.window
-            .showInformationMessage(`Exported → ${outPath}`, 'Open')
-            .then((c) => { if (c === 'Open') openMarkdownFile(outPath); });
+            .showInformationMessage(`Exported → .cc-history/${path.basename(outPath)}`, 'Open')
+            .then((c) => { if (c === 'Open') openMarkdown(outPath); });
         } catch (err) {
           vscode.window.showErrorMessage(`Export failed: ${err}`);
         }
       }
     ),
 
-    // Open exported markdown
-    vscode.commands.registerCommand(
-      'claudeCodeExporter.openSession',
+    // Open exported markdown file
+    vscode.commands.registerCommand('claudeCodeExporter.openSession',
       (pathOrItem: string | SessionItem) => {
         const mdPath = typeof pathOrItem === 'string' ? pathOrItem : pathOrItem.exportedPath;
-        if (mdPath) openMarkdownFile(mdPath);
+        if (mdPath) openMarkdown(mdPath);
       }
     ),
 
-    // Scan entire computer
+    // Scan whole computer
     vscode.commands.registerCommand('claudeCodeExporter.scanComputer', async () => {
-      const choice = await vscode.window.showWarningMessage(
-        'Scan your entire home directory for Claude Code conversation files?',
-        'Scan Home Directory', 'Cancel'
+      const ok = await vscode.window.showWarningMessage(
+        'Export ALL Claude Code conversations from every project on this computer into each project\'s .cc-history/ folder?',
+        'Export All Projects', 'Cancel'
       );
-      if (choice !== 'Scan Home Directory') return;
+      if (ok !== 'Export All Projects') return;
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'Scanning…', cancellable: true },
-        async (progress, token) => {
-          const found = await scanForClaudeProjects(os.homedir(), progress, token);
-          if (token.isCancellationRequested) return;
-          const count = found.reduce((acc, dir) => acc + countJsonl(dir), 0);
-          const c = await vscode.window.showInformationMessage(
-            `Found ${found.length} Claude project(s) with ${count} sessions.`,
-            'Export All', 'Dismiss'
-          );
-          if (c === 'Export All') {
-            for (const dir of found) await exporter.exportAll(dir);
-            treeProvider.refresh();
-            vscode.window.showInformationMessage('Export complete!');
+        { location: vscode.ProgressLocation.Notification, title: 'Exporting…', cancellable: false },
+        async () => {
+          let count = 0;
+          for (const dir of fs.readdirSync(claudeProjectsBase)) {
+            const projDir = path.join(claudeProjectsBase, dir);
+            if (!fs.statSync(projDir).isDirectory()) continue;
+
+            const cwd = getProjectCwd(projDir);
+            if (!cwd || !fs.existsSync(cwd)) continue;
+
+            const results = exporter.exportAllToWorkspace(projDir, cwd);
+            count += results.length;
           }
+          treeProvider.refresh();
+          vscode.window.showInformationMessage(
+            `Done! Exported ${count} session(s) across all projects.`
+          );
         }
       );
     }),
 
     treeView,
-    watcher,
     statusBar
   );
 
+  if (watcher) context.subscriptions.push(watcher);
+
   // ─── Auto-export on activation ────────────────────────────────────────────
   const cfg = vscode.workspace.getConfiguration('claudeCodeExporter');
-  // Only auto-export if a directory is already configured (don't prompt on startup)
-  if (cfg.get<boolean>('autoExport') && cfg.get<string>('outputDirectory')) {
-    exporter.exportAll(claudeProjectsDir).then(() => {
-      treeProvider.refresh();
-      updateStatusBar(statusBar, claudeProjectsDir);
-    });
+  if (cfg.get<boolean>('autoExport') && claudeProjectDir && workspaceRoot) {
+    exporter.exportAllToWorkspace(claudeProjectDir, workspaceRoot);
+    treeProvider.refresh();
   }
 
-  console.log('[claude-code-exporter] Extension activated.');
+  console.log('[cc-exporter] Activated.',
+    claudeProjectDir ? `Watching ${claudeProjectDir}` : 'No matching project found.');
 }
 
 export function deactivate(): void {}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getClaudeProjectsDir(): string {
+function getClaudeProjectsBase(): string {
   const cfg = vscode.workspace.getConfiguration('claudeCodeExporter');
-  const custom = cfg.get<string>('claudeProjectsDir');
-  if (custom) return custom;
-  return path.join(os.homedir(), '.claude', 'projects');
+  return cfg.get<string>('claudeProjectsDir') || path.join(os.homedir(), '.claude', 'projects');
 }
 
-async function runExportAll(
+/**
+ * Find the Claude project directory that corresponds to a workspace path.
+ * We read the first JSONL in each project dir and match its `cwd` field.
+ */
+function findClaudeProjectDir(projectsBase: string, workspacePath: string): string {
+  if (!fs.existsSync(projectsBase)) return '';
+
+  // Normalize for comparison (lowercase, forward slashes)
+  const normalWs = normalizePath(workspacePath);
+
+  for (const dir of fs.readdirSync(projectsBase)) {
+    const projDir = path.join(projectsBase, dir);
+    if (!fs.statSync(projDir).isDirectory()) continue;
+
+    const cwd = getProjectCwd(projDir);
+    if (cwd && normalizePath(cwd) === normalWs) return projDir;
+  }
+  return '';
+}
+
+/** Read the cwd from the first JSONL in a Claude project directory */
+function getProjectCwd(projDir: string): string {
+  const jsonls = fs.readdirSync(projDir).filter((f) => f.endsWith('.jsonl'));
+  if (jsonls.length === 0) return '';
+
+  const firstFile = path.join(projDir, jsonls[0]);
+  const raw = fs.readFileSync(firstFile, 'utf8');
+  const lines = raw.split('\n');
+
+  for (const line of lines.slice(0, 15)) {
+    try {
+      const obj = JSON.parse(line);
+      if (obj.cwd) return obj.cwd;
+    } catch {}
+  }
+  return '';
+}
+
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+}
+
+async function doExportAll(
   exporter: MarkdownExporter,
-  projectsDir: string,
-  treeProvider: SessionTreeProvider,
-  statusBar: vscode.StatusBarItem
+  claudeDir: string,
+  wsRoot: string,
+  treeProvider: SessionTreeProvider
 ): Promise<void> {
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Exporting conversations…', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: 'Exporting…' },
     async () => {
-      const paths = await exporter.exportAll(projectsDir);
+      const results = exporter.exportAllToWorkspace(claudeDir, wsRoot);
       treeProvider.refresh();
-      updateStatusBar(statusBar, projectsDir);
       vscode.window
-        .showInformationMessage(`Exported ${paths.length} session(s).`, 'Open Folder')
-        .then((c) => { if (c === 'Open Folder') openOutputFolder(exporter); });
+        .showInformationMessage(
+          `Exported ${results.length} session(s) to .cc-history/`,
+          'Open Folder'
+        )
+        .then((c) => { if (c === 'Open Folder') openCcHistory(wsRoot); });
     }
   );
 }
 
-async function pickFormatThenExport(
-  exporter: MarkdownExporter,
-  claudeProjectsDir: string,
-  treeProvider: SessionTreeProvider,
-  statusBar: vscode.StatusBarItem
-): Promise<void> {
-  const fmt = await vscode.window.showQuickPick(
-    [
-      { label: '$(book)  Readable', description: 'Rich Markdown with metadata and tool details — best for archiving', value: 'readable' },
-      { label: '$(comment)  Compact', description: 'Clean Human/Claude turns only — best for pasting back into Claude as context', value: 'compact' },
-    ],
-    { placeHolder: 'Choose export format' }
-  );
-  if (!fmt) return;
-
-  // Persist the chosen format
-  await vscode.workspace
-    .getConfiguration('claudeCodeExporter')
-    .update('exportFormat', fmt.value, vscode.ConfigurationTarget.Global);
-
-  await runExportAll(exporter, claudeProjectsDir, treeProvider, statusBar);
+function openCcHistory(wsRoot: string): void {
+  const dir = path.join(wsRoot, '.cc-history');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
 }
 
-function openOutputFolder(exporter: MarkdownExporter): void {
-  const cfg = vscode.workspace.getConfiguration('claudeCodeExporter');
-  const outputDir = cfg.get<string>('outputDirectory') || path.join(os.homedir(), 'claude-exports');
-  if (!fs.existsSync(outputDir)) {
-    vscode.window.showWarningMessage(`Export folder not found: ${outputDir}`);
-    return;
-  }
-  vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(outputDir));
-}
-
-function openMarkdownFile(filePath: string): void {
-  if (!fs.existsSync(filePath)) {
-    vscode.window.showWarningMessage(`File not found: ${filePath}`);
-    return;
-  }
+function openMarkdown(filePath: string): void {
+  if (!fs.existsSync(filePath)) return;
   vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(filePath));
 }
 
-function updateStatusBar(item: vscode.StatusBarItem, projectsDir: string): void {
+async function pickFormat(): Promise<'readable' | 'compact' | undefined> {
+  const fmt = await vscode.window.showQuickPick([
+    { label: '$(book)  Readable', description: 'Rich Markdown with tool details — for archiving', value: 'readable' as const },
+    { label: '$(comment)  Compact', description: 'Clean Human/Claude turns — for pasting back to Claude', value: 'compact' as const },
+  ], { placeHolder: 'Export format?' });
+  return fmt?.value;
+}
+
+function updateStatusBar(item: vscode.StatusBarItem, claudeDir: string): void {
   try {
-    let count = 0;
-    if (fs.existsSync(projectsDir)) {
-      for (const d of fs.readdirSync(projectsDir)) {
-        const full = path.join(projectsDir, d);
-        if (fs.statSync(full).isDirectory()) {
-          count += fs.readdirSync(full).filter((f) => f.endsWith('.jsonl')).length;
-        }
-      }
+    if (claudeDir && fs.existsSync(claudeDir)) {
+      const count = fs.readdirSync(claudeDir).filter((f) => f.endsWith('.jsonl')).length;
+      item.text = `$(comment-discussion) ${count} CC sessions`;
+    } else {
+      item.text = `$(comment-discussion) CC Exporter`;
     }
-    item.text = `$(comment-discussion) ${count} Claude sessions`;
   } catch {
-    item.text = `$(comment-discussion) Claude Exporter`;
+    item.text = `$(comment-discussion) CC Exporter`;
   }
-}
-
-/** Encode a filesystem path to the ~/.claude/projects/ directory name format */
-function encodePath(fsPath: string): string {
-  // e.g. E:\001Code\Jupyter\Trading → e--001Code-Jupyter-Trading
-  return fsPath
-    .replace(/^([a-zA-Z]):/, '$1')          // remove colon after drive letter
-    .replace(/[/\\]/g, '-')                 // slashes → dashes
-    .replace(/^-/, '')                      // remove leading dash
-    .replace(/([a-z])([A-Z0-9])/, '$1--$2') // drive letter pattern
-    .toLowerCase()
-    .replace(/^([a-z])/, (m) => m.toLowerCase())
-    + '';
-  // Note: actual encoding is Claude's own scheme; this is a best-effort match
-}
-
-async function scanForClaudeProjects(
-  rootDir: string,
-  progress: vscode.Progress<{ message?: string }>,
-  token: vscode.CancellationToken
-): Promise<string[]> {
-  const results: string[] = [];
-  const commonPaths = [
-    path.join(rootDir, '.claude', 'projects'),
-    path.join(rootDir, 'AppData', 'Local', '.claude', 'projects'),
-    path.join(rootDir, 'AppData', 'Roaming', '.claude', 'projects'),
-  ];
-  for (const p of commonPaths) {
-    if (fs.existsSync(p)) results.push(p);
-  }
-  if (results.length > 0) return results;
-
-  progress.report({ message: 'Deep scanning…' });
-  await deepScan(rootDir, results, token, 0, 4);
-  return results;
-}
-
-async function deepScan(
-  dir: string, results: string[], token: vscode.CancellationToken,
-  depth: number, maxDepth: number
-): Promise<void> {
-  if (depth > maxDepth || token.isCancellationRequested) return;
-  let entries: fs.Dirent[];
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-
-  for (const entry of entries) {
-    if (token.isCancellationRequested) return;
-    if (!entry.isDirectory()) continue;
-    const skip = ['node_modules', '.git', 'Library', 'System', 'Windows', 'Program Files'];
-    if (skip.includes(entry.name)) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.name === 'projects' && dir.endsWith('.claude')) { results.push(full); continue; }
-    await deepScan(full, results, token, depth + 1, maxDepth);
-  }
-}
-
-function countJsonl(projectsDir: string): number {
-  let count = 0;
-  try {
-    for (const d of fs.readdirSync(projectsDir)) {
-      const full = path.join(projectsDir, d);
-      if (fs.statSync(full).isDirectory()) {
-        count += fs.readdirSync(full).filter((f) => f.endsWith('.jsonl')).length;
-      }
-    }
-  } catch {}
-  return count;
 }

@@ -3,3 +3,6 @@ dist/
 *.vsix
 .vscode-test/
 out/
+
+# Old export artifacts
+*__*/

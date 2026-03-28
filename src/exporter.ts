@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as vscode from 'vscode';
 import {
   ConversationSession,
   ConversationMessage,
@@ -17,141 +16,108 @@ import {
 export interface ExportOptions {
   includeThinking: boolean;
   includeToolDetails: boolean;
-  groupByProject: boolean;
-  filenameFormat: string;
-  outputDir: string;
-  /** 'readable' = rich Markdown for humans; 'compact' = clean text for pasting back to Claude */
   exportFormat: 'readable' | 'compact';
 }
 
 export class MarkdownExporter {
-  constructor(private readonly context: vscode.ExtensionContext) {}
-
   getOptions(): ExportOptions {
+    // Deferred import to avoid top-level vscode dependency in tests
+    const vscode = require('vscode');
     const cfg = vscode.workspace.getConfiguration('claudeCodeExporter');
-    const outputDir =
-      cfg.get<string>('outputDirectory') || '';
     return {
       includeThinking: cfg.get<boolean>('includeThinking') ?? false,
       includeToolDetails: cfg.get<boolean>('includeToolDetails') ?? true,
-      groupByProject: cfg.get<boolean>('groupByProject') ?? true,
-      filenameFormat:
-        cfg.get<string>('filenameFormat') ?? '{date}_{project}_{sessionId}',
-      outputDir,
       exportFormat: (cfg.get<string>('exportFormat') ?? 'readable') as 'readable' | 'compact',
     };
   }
 
   /**
-   * Resolve output dir, prompting user to pick one if not configured.
-   * Returns undefined if the user cancels.
+   * Export a single session JSONL into the workspace's .cc-history/ folder.
+   * Returns the output path.
    */
-  async resolveOutputDir(opts: ExportOptions): Promise<string | undefined> {
-    if (opts.outputDir) return opts.outputDir;
-
-    // Prompt user to choose a folder
-    const picked = await vscode.window.showOpenDialog({
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: false,
-      title: 'Choose folder to save exported conversations',
-      openLabel: 'Select Export Folder',
-    });
-
-    if (!picked || picked.length === 0) return undefined;
-
-    const chosen = picked[0].fsPath;
-    // Save to user settings so we don't ask again
-    await vscode.workspace
-      .getConfiguration('claudeCodeExporter')
-      .update('outputDirectory', chosen, vscode.ConfigurationTarget.Global);
-
-    return chosen;
-  }
-
-  /** Export a single session file to Markdown. Returns the output path. */
-  async exportSession(
+  exportSessionToWorkspace(
     sessionFilePath: string,
+    workspaceRoot: string,
     opts?: Partial<ExportOptions>
-  ): Promise<string> {
+  ): string {
     const options = { ...this.getOptions(), ...opts };
-
-    // Resolve output dir (may prompt)
-    const outDir = await this.resolveOutputDir(options);
-    if (!outDir) throw new Error('No output directory selected.');
-    options.outputDir = outDir;
-
     const session = parseSessionFile(sessionFilePath);
+
     const markdown =
       options.exportFormat === 'compact'
         ? this.renderCompact(session, options)
         : this.renderReadable(session, options);
 
-    const outPath = this.resolveOutputPath(session, options);
-    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    const outDir = path.join(workspaceRoot, '.cc-history');
+    const outPath = path.join(outDir, this.buildFilename(session, options));
+    fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(outPath, markdown, 'utf8');
     return outPath;
   }
 
-  /** Export all sessions under a projectsDir */
-  async exportAll(projectsDir: string, opts?: Partial<ExportOptions>): Promise<string[]> {
+  /**
+   * Export ALL sessions for a given Claude project dir into workspace .cc-history/.
+   */
+  exportAllToWorkspace(
+    claudeProjectDir: string,
+    workspaceRoot: string,
+    opts?: Partial<ExportOptions>
+  ): string[] {
     const options = { ...this.getOptions(), ...opts };
-
-    // Resolve output dir once for all
-    const outDir = await this.resolveOutputDir(options);
-    if (!outDir) return [];
-    options.outputDir = outDir;
-
-    const files = scanProjectsDir(projectsDir);
     const results: string[] = [];
+
+    const files = fs
+      .readdirSync(claudeProjectDir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => path.join(claudeProjectDir, f));
 
     for (const file of files) {
       try {
-        const session = parseSessionFile(file);
-        const markdown =
-          options.exportFormat === 'compact'
-            ? this.renderCompact(session, options)
-            : this.renderReadable(session, options);
-        const outPath = this.resolveOutputPath(session, options);
-        fs.mkdirSync(path.dirname(outPath), { recursive: true });
-        fs.writeFileSync(outPath, markdown, 'utf8');
-        results.push(outPath);
+        const out = this.exportSessionToWorkspace(file, workspaceRoot, options);
+        results.push(out);
       } catch (err) {
-        console.error(`[claude-code-exporter] Failed to export ${file}:`, err);
+        console.error(`[cc-exporter] Failed: ${file}`, err);
       }
     }
     return results;
   }
 
-  // ─── Path resolution ────────────────────────────────────────────────────────
+  // ─── Filename ─────────────────────────────────────────────────────────────
 
-  resolveOutputPath(session: ConversationSession, opts: ExportOptions): string {
-    const outDir = opts.outputDir || path.join(os.homedir(), 'claude-exports');
+  private buildFilename(session: ConversationSession, opts: ExportOptions): string {
     const date = session.startTime
       ? new Date(session.startTime).toISOString().slice(0, 10)
       : 'unknown-date';
 
-    const safeName = session.projectName
-      .replace(/[:\\/*?"<>|]/g, '_')
-      .replace(/\s+/g, '_');
+    // Use first user message as part of filename
+    let preview = '';
+    for (const msg of session.messages) {
+      if (msg.role === 'user') {
+        for (const b of msg.blocks) {
+          if (b.type === 'text') {
+            preview = (b as TextBlock).text?.trim().slice(0, 40) ?? '';
+            break;
+          }
+        }
+        if (preview) break;
+      }
+    }
+    // Sanitize
+    preview = preview
+      .replace(/[\\/:*?"<>|\r\n]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 40);
 
     const shortId = session.sessionId.split('-')[0];
-
-    const filename = opts.filenameFormat
-      .replace('{project}', safeName)
-      .replace('{date}', date)
-      .replace('{sessionId}', shortId)
-      .replace(/[\\/*?"<>|]/g, '_');
-
     const suffix = opts.exportFormat === 'compact' ? '_compact' : '';
 
-    if (opts.groupByProject) {
-      return path.join(outDir, safeName, `${filename}${suffix}.md`);
+    if (preview) {
+      return `${date}_${preview}_${shortId}${suffix}.md`;
     }
-    return path.join(outDir, `${filename}${suffix}.md`);
+    return `${date}_${shortId}${suffix}.md`;
   }
 
-  // ─── READABLE format (rich Markdown, for humans) ─────────────────────────────
+  // ─── READABLE format (rich Markdown) ──────────────────────────────────────
 
   renderReadable(session: ConversationSession, opts: ExportOptions): string {
     const lines: string[] = [];
@@ -163,9 +129,9 @@ export class MarkdownExporter {
     lines.push(`| **Project** | \`${session.projectName}\` |`);
     lines.push(`| **Session ID** | \`${session.sessionId}\` |`);
     if (session.cwd) lines.push(`| **Working Dir** | \`${session.cwd}\` |`);
-    if (session.startTime) lines.push(`| **Started** | ${formatDate(session.startTime)} |`);
+    if (session.startTime) lines.push(`| **Started** | ${fmtDate(session.startTime)} |`);
     if (session.endTime && session.endTime !== session.startTime) {
-      lines.push(`| **Last Updated** | ${formatDate(session.endTime)} |`);
+      lines.push(`| **Last Updated** | ${fmtDate(session.endTime)} |`);
     }
     lines.push(`| **Messages** | ${session.messages.length} |`);
     lines.push('');
@@ -173,15 +139,13 @@ export class MarkdownExporter {
     lines.push('');
 
     for (const msg of session.messages) {
-      const roleLabel = msg.role === 'user' ? '## 👤 User' : '## 🤖 Assistant';
-      const ts = msg.timestamp ? ` <sup>${formatDate(msg.timestamp)}</sup>` : '';
-      lines.push(`${roleLabel}${ts}`);
+      const role = msg.role === 'user' ? '## User' : '## Assistant';
+      const ts = msg.timestamp ? ` <sup>${fmtDate(msg.timestamp)}</sup>` : '';
+      lines.push(`${role}${ts}`);
       lines.push('');
-
       for (const block of msg.blocks) {
         lines.push(...this.renderBlockReadable(block, opts));
       }
-
       lines.push('');
       lines.push('---');
       lines.push('');
@@ -200,53 +164,47 @@ export class MarkdownExporter {
         if (!opts.includeThinking) return [];
         const t = (block as ThinkingBlock).thinking?.trim();
         if (!t) return [];
-        return ['<details>', '<summary>💭 Extended Thinking</summary>', '', '```', t, '```', '', '</details>', ''];
+        return ['<details>', '<summary>Thinking</summary>', '', '```', t, '```', '', '</details>', ''];
       }
       case 'tool_use': {
         const b = block as ToolUseBlock;
-        if (!opts.includeToolDetails) return [`> 🔧 **Tool:** \`${b.name}\``, ''];
+        if (!opts.includeToolDetails) return [`> Tool: \`${b.name}\``, ''];
         const inputStr = JSON.stringify(b.input, null, 2);
         const display = inputStr.length > 2000 ? inputStr.slice(0, 2000) + '\n...(truncated)' : inputStr;
-        return ['<details>', `<summary>🔧 Tool: <code>${b.name}</code></summary>`, '', '```json', display, '```', '', '</details>', ''];
+        return ['<details>', `<summary>Tool: <code>${b.name}</code></summary>`, '', '```json', display, '```', '', '</details>', ''];
       }
       case 'tool_result': {
         if (!opts.includeToolDetails) return [];
-        const b = block as ToolResultBlock;
-        const content = extractText(b.content);
+        const content = extractText((block as ToolResultBlock).content);
         if (!content.trim()) return [];
         const display = content.length > 1000 ? content.slice(0, 1000) + '\n...(truncated)' : content;
-        return ['<details>', '<summary>📤 Tool Result</summary>', '', '```', display.trim(), '```', '', '</details>', ''];
+        return ['<details>', '<summary>Tool Result</summary>', '', '```', display.trim(), '```', '', '</details>', ''];
       }
       case 'image':
-        return ['> 📷 *[Image]*', ''];
+        return ['> *[Image]*', ''];
       default:
         return [];
     }
   }
 
-  // ─── COMPACT format (clean text, for pasting back to Claude) ─────────────────
+  // ─── COMPACT format (clean turns for pasting to Claude) ───────────────────
 
   renderCompact(session: ConversationSession, opts: ExportOptions): string {
     const lines: string[] = [];
-
-    // Minimal header
-    lines.push(`<!-- Claude Code Session | Project: ${session.projectName} | ${session.startTime ? new Date(session.startTime).toISOString().slice(0, 10) : ''} -->`);
+    lines.push(`<!-- Claude Code | ${session.projectName} | ${session.startTime ? new Date(session.startTime).toISOString().slice(0, 10) : ''} -->`);
     lines.push('');
 
     for (const msg of session.messages) {
-      const roleLabel = msg.role === 'user' ? '**Human:**' : '**Claude:**';
-      const textParts: string[] = [];
-
+      const parts: string[] = [];
       for (const block of msg.blocks) {
-        const text = this.blockToCompactText(block, opts);
-        if (text) textParts.push(text);
+        const text = this.blockToCompact(block, opts);
+        if (text) parts.push(text);
       }
+      if (parts.length === 0) continue;
 
-      if (textParts.length === 0) continue;
-
-      lines.push(roleLabel);
+      lines.push(msg.role === 'user' ? '**Human:**' : '**Claude:**');
       lines.push('');
-      lines.push(textParts.join('\n\n'));
+      lines.push(parts.join('\n\n'));
       lines.push('');
       lines.push('---');
       lines.push('');
@@ -255,7 +213,7 @@ export class MarkdownExporter {
     return lines.join('\n');
   }
 
-  private blockToCompactText(block: ContentBlock, opts: ExportOptions): string {
+  private blockToCompact(block: ContentBlock, opts: ExportOptions): string {
     switch (block.type) {
       case 'text':
         return (block as TextBlock).text?.trim() ?? '';
@@ -264,16 +222,13 @@ export class MarkdownExporter {
         return `[Thinking: ${(block as ThinkingBlock).thinking?.slice(0, 200)}...]`;
       case 'tool_use': {
         const b = block as ToolUseBlock;
-        // Just mention the tool name — no big JSON dump
-        const desc = summarizeToolInput(b.name, b.input);
-        return `[Tool: ${b.name}${desc ? ' — ' + desc : ''}]`;
+        return `[Tool: ${b.name}${summarize(b.name, b.input)}]`;
       }
       case 'tool_result': {
         if (!opts.includeToolDetails) return '';
-        const content = extractText((block as ToolResultBlock).content);
-        if (!content.trim()) return '';
-        const truncated = content.length > 500 ? content.slice(0, 500) + '...(truncated)' : content;
-        return `[Tool result: ${truncated.trim()}]`;
+        const text = extractText((block as ToolResultBlock).content);
+        if (!text.trim()) return '';
+        return `[Result: ${text.trim().slice(0, 500)}${text.length > 500 ? '...' : ''}]`;
       }
       default:
         return '';
@@ -281,39 +236,31 @@ export class MarkdownExporter {
   }
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
+function fmtDate(iso: string): string {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
 function extractText(content: string | ContentBlock[]): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
-  return content
-    .filter((b) => b.type === 'text')
-    .map((b) => (b as TextBlock).text)
-    .join('\n');
+  return content.filter((b) => b.type === 'text').map((b) => (b as TextBlock).text).join('\n');
 }
 
-/** Produce a short human-readable description of what a tool call does */
-function summarizeToolInput(name: string, input: Record<string, unknown>): string {
-  const tryKey = (...keys: string[]) => {
-    for (const k of keys) {
-      if (typeof input[k] === 'string') return (input[k] as string).slice(0, 80);
-    }
+function summarize(name: string, input: Record<string, unknown>): string {
+  const get = (...keys: string[]) => {
+    for (const k of keys) if (typeof input[k] === 'string') return ` — ${(input[k] as string).slice(0, 80)}`;
     return '';
   };
   switch (name) {
-    case 'Read':      return tryKey('file_path');
-    case 'Write':     return tryKey('file_path');
-    case 'Edit':      return tryKey('file_path');
-    case 'Bash':      return tryKey('command', 'description');
-    case 'Grep':      return tryKey('pattern');
-    case 'Glob':      return tryKey('pattern');
-    case 'WebFetch':  return tryKey('url');
-    case 'WebSearch': return tryKey('query');
-    case 'Agent':     return tryKey('description', 'prompt');
-    default:          return tryKey('prompt', 'description', 'query', 'path', 'command');
+    case 'Read':     case 'Write':    case 'Edit':      return get('file_path');
+    case 'Bash':     return get('command', 'description');
+    case 'Grep':     return get('pattern');
+    case 'Glob':     return get('pattern');
+    case 'WebFetch': return get('url');
+    case 'WebSearch': return get('query');
+    case 'Agent':    return get('description', 'prompt');
+    default:         return get('prompt', 'description', 'query', 'path', 'command');
   }
 }

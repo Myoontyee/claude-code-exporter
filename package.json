@@ -2,7 +2,7 @@
   "name": "claude-code-exporter",
   "displayName": "Claude Code Exporter",
   "description": "Auto-export Claude Code CLI conversations to Markdown files. Watches ~/.claude/projects/ and keeps your chat history as readable .md files.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "your-publisher-id",
   "engines": {
     "vscode": "^1.85.0"
@@ -38,9 +38,15 @@
         "category": "Claude Code Exporter"
       },
       {
-        "command": "claudeCodeExporter.exportAll",
-        "title": "Export All Conversations",
+        "command": "claudeCodeExporter.exportMenu",
+        "title": "Export…",
         "icon": "$(cloud-download)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.setOutputDirectory",
+        "title": "Set Output Folder…",
+        "icon": "$(folder)",
         "category": "Claude Code Exporter"
       },
       {
@@ -73,29 +79,34 @@
         {
           "command": "claudeCodeExporter.refresh",
           "when": "view == claudeCodeExporterSessions",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
-          "command": "claudeCodeExporter.exportAll",
+          "command": "claudeCodeExporter.exportMenu",
           "when": "view == claudeCodeExporterSessions",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeCodeExporter.setOutputDirectory",
+          "when": "view == claudeCodeExporterSessions",
+          "group": "navigation@3"
         },
         {
           "command": "claudeCodeExporter.openExportFolder",
           "when": "view == claudeCodeExporterSessions",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
         {
           "command": "claudeCodeExporter.exportSession",
           "when": "viewItem == session",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "claudeCodeExporter.openSession",
           "when": "viewItem == session",
-          "group": "inline"
+          "group": "inline@2"
         }
       ]
     },
@@ -105,12 +116,22 @@
         "claudeCodeExporter.outputDirectory": {
           "type": "string",
           "default": "",
-          "description": "Directory to save exported Markdown files. Defaults to ~/claude-exports."
+          "description": "Directory to save exported Markdown files. Leave empty to be prompted on first export."
         },
         "claudeCodeExporter.autoExport": {
           "type": "boolean",
           "default": true,
           "description": "Automatically export conversations when they are updated."
+        },
+        "claudeCodeExporter.exportFormat": {
+          "type": "string",
+          "default": "readable",
+          "enum": ["readable", "compact"],
+          "enumDescriptions": [
+            "Rich Markdown with metadata table, collapsible tool calls — best for human reading and archiving.",
+            "Clean Human/Assistant format with minimal noise — best for pasting back into Claude as context."
+          ],
+          "description": "Export format: 'readable' for archiving, 'compact' for feeding back to Claude."
         },
         "claudeCodeExporter.includeThinking": {
           "type": "boolean",
@@ -120,7 +141,7 @@
         "claudeCodeExporter.includeToolDetails": {
           "type": "boolean",
           "default": true,
-          "description": "Include tool call details (collapsed) in exports."
+          "description": "Include tool call details (collapsed) in exports. Only applies to 'readable' format."
         },
         "claudeCodeExporter.claudeProjectsDir": {
           "type": "string",
@@ -129,7 +150,7 @@
         },
         "claudeCodeExporter.filenameFormat": {
           "type": "string",
-          "default": "{project}_{date}_{sessionId}",
+          "default": "{date}_{project}_{sessionId}",
           "description": "Filename format for exported files. Variables: {project}, {date}, {sessionId}."
         },
         "claudeCodeExporter.groupByProject": {

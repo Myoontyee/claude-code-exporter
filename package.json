@@ -2,7 +2,7 @@
   "name": "claude-code-exporter",
   "displayName": "Claude Code Exporter",
   "description": "Auto-export Claude Code CLI conversations to Markdown files. Watches ~/.claude/projects/ and keeps your chat history as readable .md files.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "myoontyee",
   "engines": {
     "vscode": "^1.85.0"

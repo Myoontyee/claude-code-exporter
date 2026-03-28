@@ -5,43 +5,36 @@
 <h1 align="center">Claude Code Exporter</h1>
 
 <p align="center">
-  <strong>Auto-export Claude Code conversations to Markdown — build your AI knowledge base effortlessly.</strong><br>
-  <strong>自动导出 Claude Code 对话为 Markdown —— 轻松构建你的 AI 知识库。</strong>
-</p>
-
-<p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=myoontyee.claude-code-exporter"><img src="https://img.shields.io/visual-studio-marketplace/v/myoontyee.claude-code-exporter?style=flat-square&label=VS%20Code%20Marketplace" alt="VS Marketplace"></a>
   <a href="https://github.com/Myoontyee/claude-code-exporter/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Myoontyee/claude-code-exporter?style=flat-square" alt="License"></a>
 </p>
 
+<p align="center">
+  <a href="#english">English</a> · <a href="#中文">中文</a>
+</p>
+
 ---
 
-## Why? / 为什么需要它？
+## English
 
-If you use Claude Code across multiple projects, you've probably hit this wall:
+### Why This Exists
 
-如果你在多个项目中使用 Claude Code，你一定遇到过这些痛点：
+I use Claude Code every day — across multiple projects, across dozens of sessions. And I kept running into the same wall:
 
-- **Context is trapped in sessions.** You solved a bug yesterday, but today's session doesn't know about it.
-  **上下文被锁在单次会话里。** 昨天解决的 bug，今天的会话完全不知道。
+Every session starts from zero. You explained your architecture last Tuesday. You debugged that auth issue on Thursday. You built a whole mental model with Claude over three hours — and then the session ends, and it's gone. The next time you open Claude Code, it doesn't know any of it.
 
-- **Conversations vanish across CLI restarts.** Switching sessions or hitting API cache limits means starting from scratch.
-  **跨会话记忆丢失。** 切换 session、API 缓存过期，一切从头开始。
+This isn't just a memory problem. It's a **knowledge problem**. The conversations where Claude helped you think through hard problems, refactor messy code, or design a new system — those are genuinely valuable. They shouldn't evaporate.
 
-- **No searchable history.** Unlike a codebase, your AI conversations have no `grep`.
-  **没有可搜索的历史。** 代码可以 grep，但 AI 对话不行。
+**Claude Code Exporter** does one thing: it automatically saves every Claude Code conversation as a Markdown file, inside your project folder, in real time. Your AI sessions become a searchable, reusable knowledge base. And when you start a new session, you can hand Claude the relevant history and pick up exactly where you left off — no re-explaining, no lost context.
 
-**Claude Code Exporter** fixes this by automatically converting every conversation into clean, searchable Markdown files — right inside your project folder. Your AI chat history becomes a **local knowledge base** that you (and Claude) can reference anytime.
+It works the same way SpecStory works for Cursor and GitHub Copilot. Except this one is for Claude Code.
 
-**Claude Code Exporter** 自动把每一段对话转为干净、可搜索的 Markdown 文件，直接存在你的项目文件夹里。AI 聊天记录变成了**本地知识库**，你（和 Claude）随时可以引用。
-
-## How It Works / 工作原理
+### How It Works
 
 ```
 ~/.claude/projects/<your-project>/session.jsonl
                       │
-                      │  (auto-detected, real-time watching)
-                      │  (自动检测，实时监控)
+                      │  auto-detected + real-time file watching
                       ▼
          <your-project>/.cc-history/
               ├── 2025-03-27_fix-auth-bug_a1b2c3d4.md
@@ -49,83 +42,124 @@ If you use Claude Code across multiple projects, you've probably hit this wall:
               └── ...
 ```
 
-Open any workspace → the extension matches it to its Claude sessions → exports to `.cc-history/` → watches for new messages in real time. **Zero configuration.**
+Open any workspace → extension matches it to its Claude sessions → exports to `.cc-history/` → watches for new messages and updates instantly. **Zero configuration.**
 
-打开任意工作区 → 插件自动匹配对应的 Claude 会话 → 导出到 `.cc-history/` → 实时监听新消息。**零配置。**
+### Features
 
-## Features / 功能
-
-| Feature / 功能 | Description / 说明 |
+| Feature | Description |
 |---|---|
-| **Auto-export / 自动导出** | Exports to `.cc-history/` on workspace open. New messages update in real time. / 打开项目即导出，新消息实时更新。 |
-| **Two formats / 双格式** | **Readable** — rich Markdown for archiving. **Compact** — clean turns for pasting back to Claude. / **可读模式** — 完整 Markdown 存档。**精简模式** — 干净对话，方便贴回给 Claude 作上下文。 |
-| **Sidebar / 侧边栏** | Browse all sessions for the current project. Click to preview. / 浏览当前项目所有会话，点击预览。 |
-| **Batch export / 批量导出** | Export all sessions, or scan your entire machine. / 一键导出全部，或扫描全机所有 Claude 项目。 |
-| **Smart filenames / 智能命名** | `{date}_{first-message}_{sessionId}.md` — find anything instantly. / 日期 + 首条消息 + 会话 ID，一目了然。 |
-| **Tool summaries / 工具摘要** | `[Tool: Bash — git status]` instead of raw JSON. / 工具调用一行摘要，不再是大段 JSON。 |
+| **Auto-export** | Exports to `.cc-history/` when you open a workspace. Updates in real time as you chat. |
+| **Two formats** | **Readable** — rich Markdown with metadata and tool call details, for archiving. **Compact** — clean Human/Claude turns only, optimized for pasting back as context. |
+| **Sidebar** | Browse all sessions for the current project. Click any session to preview. |
+| **Batch export** | One-click export all sessions, or scan your entire machine for every Claude project. |
+| **Smart filenames** | `{date}_{first-message}_{sessionId}.md` — find what you need at a glance. |
+| **Tool summaries** | `[Tool: Bash — git status]` instead of raw JSON walls. |
 
-## Quick Start / 快速开始
+### Quick Start
 
-1. **Install / 安装** — from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=myoontyee.claude-code-exporter), or search "Claude Code Exporter" in Extensions.
-2. **Open a project / 打开项目** — any folder where you've used Claude Code.
-3. **Done / 完成** — check `.cc-history/` in your project root.
+1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=myoontyee.claude-code-exporter)
+2. Open a project where you've used Claude Code
+3. Done — check the `.cc-history/` folder in your project root
 
-## Use as Knowledge Base / 用作知识库
+### Use as a Knowledge Base
 
-The killer use case: **feed past conversations back to Claude as context.**
+Set format to **Compact**, then in a new Claude Code session:
 
-核心用法：**把历史对话作为上下文喂回给 Claude。**
+```
+Read .cc-history/2025-03-27_fix-auth-bug_a1b2c3d4_compact.md
+and use that context to continue the work.
+```
 
-1. Set format to **Compact**: Settings → `claudeCodeExporter.exportFormat` → `compact`
+Claude now has full context from the previous session. This is the closest thing to **persistent memory across sessions** that Claude Code currently supports.
 
-   设置格式为 **Compact**（精简模式）
+### Settings
 
-2. In a new Claude Code session:
-
-   在新的 Claude Code 会话中：
-
-   ```
-   Read .cc-history/2025-03-27_fix-auth-bug_a1b2c3d4_compact.md
-   and use that context to continue the work.
-   ```
-
-3. Claude now has full context from the previous session — no re-explaining.
-
-   Claude 现在拥有了上一次会话的完整上下文 —— 无需重新解释。
-
-This gives Claude **persistent memory across sessions**, without relying on API caching.
-
-这相当于给 Claude 加上了**跨会话的持久记忆**，不依赖 API 缓存。
-
-## Settings / 设置
-
-| Setting | Default | Description / 说明 |
+| Setting | Default | Description |
 |---|---|---|
-| `claudeCodeExporter.autoExport` | `true` | Auto-export on open and on changes / 打开项目和检测到变更时自动导出 |
-| `claudeCodeExporter.exportFormat` | `readable` | `readable` for archiving, `compact` for AI context / 可读模式存档，精简模式喂 AI |
-| `claudeCodeExporter.includeThinking` | `false` | Include extended thinking blocks / 包含扩展思考块 |
-| `claudeCodeExporter.includeToolDetails` | `true` | Include tool call details / 包含工具调用详情 |
-| `claudeCodeExporter.claudeProjectsDir` | `~/.claude/projects` | Custom Claude projects path / 自定义 Claude 项目目录 |
+| `claudeCodeExporter.autoExport` | `true` | Auto-export on open and on changes |
+| `claudeCodeExporter.exportFormat` | `readable` | `readable` for archiving, `compact` for AI context |
+| `claudeCodeExporter.includeThinking` | `false` | Include extended thinking blocks |
+| `claudeCodeExporter.includeToolDetails` | `true` | Include tool call details |
+| `claudeCodeExporter.claudeProjectsDir` | `~/.claude/projects` | Custom Claude projects path |
 
-## Commands / 命令
+### Compatibility
 
-`Ctrl+Shift+P` →
+- VS Code 1.85+ · Cursor · Claude Code CLI · Claude Code for VS Code
+- Windows / macOS / Linux
 
-- **Claude Code Exporter: Export...** — Export all or choose format / 全量导出或选择格式
-- **Claude Code Exporter: Refresh Sessions** — Rescan / 重新扫描
-- **Claude Code Exporter: Scan Computer** — Export all projects on this machine / 导出本机所有项目
+---
 
-## Compatibility / 兼容性
+## 中文
 
-- **VS Code** 1.85+
-- **Cursor** — fully compatible / 完全兼容
-- **Claude Code for VS Code** extension
-- **Claude Code CLI**
-- **Windows / macOS / Linux**
+### 为什么做这个插件
 
-## License
+我每天都在用 Claude Code，跨多个项目，跨几十个会话。然后我一直撞上同一堵墙：
 
-[MIT](LICENSE)
+每个会话从零开始。上周二你解释了系统架构，周四调试了那个鉴权 bug，花了三个小时和 Claude 建立了完整的心智模型——然后会话结束了，什么都没了。下次打开 Claude Code，它什么都不知道。
+
+这不只是记忆的问题，这是一个**知识沉淀**的问题。那些你和 Claude 一起思考难题、重构代码、设计新系统的对话，是真正有价值的东西，不应该就这样消散。
+
+**Claude Code Exporter** 只做一件事：自动把每一段 Claude Code 对话实时保存为 Markdown 文件，就放在你的项目文件夹里。你的 AI 会话变成了可搜索、可复用的知识库。下次开启新会话时，把相关历史交给 Claude，你们可以从上次结束的地方继续——无需重新解释，上下文不再丢失。
+
+它的工作方式和 SpecStory 对于 Cursor、GitHub Copilot 的方式一样。只不过这个是专门为 Claude Code 做的。
+
+### 工作原理
+
+```
+~/.claude/projects/<your-project>/session.jsonl
+                      │
+                      │  自动检测 + 实时文件监控
+                      ▼
+         <your-project>/.cc-history/
+              ├── 2025-03-27_fix-auth-bug_a1b2c3d4.md
+              ├── 2025-03-28_refactor-api_e5f6g7h8.md
+              └── ...
+```
+
+打开任意工作区 → 插件自动匹配对应的 Claude 会话 → 导出到 `.cc-history/` → 实时监听新消息并更新。**零配置。**
+
+### 功能
+
+| 功能 | 说明 |
+|---|---|
+| **自动导出** | 打开工作区即导出，对话进行中实时更新 |
+| **双格式** | **可读模式** — 完整 Markdown，含元数据和工具调用，用于存档。**精简模式** — 纯对话流，用于贴回给 Claude 作上下文 |
+| **侧边栏** | 浏览当前项目的所有会话，点击直接预览 |
+| **批量导出** | 一键导出全部会话，或扫描全机所有 Claude 项目 |
+| **智能命名** | `{日期}_{首条消息}_{会话ID}.md`，一眼找到想要的 |
+| **工具摘要** | `[Tool: Bash — git status]` 替代大段 JSON |
+
+### 快速开始
+
+1. 从 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=myoontyee.claude-code-exporter) 安装，或在扩展搜索 "Claude Code Exporter"
+2. 打开一个你用过 Claude Code 的项目文件夹
+3. 完成——查看项目根目录下的 `.cc-history/` 文件夹
+
+### 用作知识库
+
+设置格式为 **Compact（精简模式）**，然后在新会话里：
+
+```
+Read .cc-history/2025-03-27_fix-auth-bug_a1b2c3d4_compact.md
+and use that context to continue the work.
+```
+
+Claude 就拥有了上一次会话的完整上下文。这是目前 Claude Code 能做到的最接近**跨会话持久记忆**的方案。
+
+### 设置项
+
+| 设置 | 默认值 | 说明 |
+|---|---|---|
+| `claudeCodeExporter.autoExport` | `true` | 打开项目和检测到变更时自动导出 |
+| `claudeCodeExporter.exportFormat` | `readable` | `readable` 存档，`compact` 喂 AI |
+| `claudeCodeExporter.includeThinking` | `false` | 包含扩展思考块 |
+| `claudeCodeExporter.includeToolDetails` | `true` | 包含工具调用详情 |
+| `claudeCodeExporter.claudeProjectsDir` | `~/.claude/projects` | 自定义 Claude 项目目录 |
+
+### 兼容性
+
+- VS Code 1.85+ · Cursor · Claude Code CLI · Claude Code for VS Code
+- Windows / macOS / Linux
 
 ---
 

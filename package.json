@@ -9,7 +9,6 @@
   },
   "categories": ["Other"],
   "keywords": ["claude", "claude-code", "ai", "chat", "export", "markdown"],
-  "icon": "images/icon.png",
   "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {

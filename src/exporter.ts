@@ -86,7 +86,7 @@ export class MarkdownExporter {
 
   private buildFilename(session: ConversationSession, opts: ExportOptions): string {
     const date = session.startTime
-      ? new Date(session.startTime).toISOString().slice(0, 10)
+      ? fmtFileTimestamp(new Date(session.startTime))
       : 'unknown-date';
 
     // Use first user message as part of filename
@@ -240,6 +240,12 @@ export class MarkdownExporter {
 
 function fmtDate(iso: string): string {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+/** Format a Date as YYYY-MM-DD_HHmmss for filenames (local time, no colons). */
+function fmtFileTimestamp(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function extractText(content: string | ContentBlock[]): string {

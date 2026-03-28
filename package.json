@@ -1,0 +1,158 @@
+{
+  "name": "claude-code-exporter",
+  "displayName": "Claude Code Exporter",
+  "description": "Auto-export Claude Code CLI conversations to Markdown files. Watches ~/.claude/projects/ and keeps your chat history as readable .md files.",
+  "version": "0.1.0",
+  "publisher": "your-publisher-id",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["claude", "claude-code", "ai", "chat", "export", "markdown"],
+  "icon": "images/icon.png",
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-code-exporter",
+          "title": "Claude Code Exporter",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "claude-code-exporter": [
+        {
+          "id": "claudeCodeExporterSessions",
+          "name": "Sessions",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeCodeExporter.refresh",
+        "title": "Refresh Sessions",
+        "icon": "$(refresh)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.exportAll",
+        "title": "Export All Conversations",
+        "icon": "$(cloud-download)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.openExportFolder",
+        "title": "Open Export Folder",
+        "icon": "$(folder-opened)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.exportSession",
+        "title": "Export This Session",
+        "icon": "$(export)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.openSession",
+        "title": "Open Session Markdown",
+        "icon": "$(go-to-file)",
+        "category": "Claude Code Exporter"
+      },
+      {
+        "command": "claudeCodeExporter.scanComputer",
+        "title": "Scan Computer for Claude Conversations",
+        "icon": "$(search)",
+        "category": "Claude Code Exporter"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeCodeExporter.refresh",
+          "when": "view == claudeCodeExporterSessions",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeCodeExporter.exportAll",
+          "when": "view == claudeCodeExporterSessions",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeCodeExporter.openExportFolder",
+          "when": "view == claudeCodeExporterSessions",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeCodeExporter.exportSession",
+          "when": "viewItem == session",
+          "group": "inline"
+        },
+        {
+          "command": "claudeCodeExporter.openSession",
+          "when": "viewItem == session",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Claude Code Exporter",
+      "properties": {
+        "claudeCodeExporter.outputDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Directory to save exported Markdown files. Defaults to ~/claude-exports."
+        },
+        "claudeCodeExporter.autoExport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically export conversations when they are updated."
+        },
+        "claudeCodeExporter.includeThinking": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include Claude's extended thinking blocks in exports."
+        },
+        "claudeCodeExporter.includeToolDetails": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include tool call details (collapsed) in exports."
+        },
+        "claudeCodeExporter.claudeProjectsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Path to Claude Code projects directory. Defaults to ~/.claude/projects."
+        },
+        "claudeCodeExporter.filenameFormat": {
+          "type": "string",
+          "default": "{project}_{date}_{sessionId}",
+          "description": "Filename format for exported files. Variables: {project}, {date}, {sessionId}."
+        },
+        "claudeCodeExporter.groupByProject": {
+          "type": "boolean",
+          "default": true,
+          "description": "Group exported files into subdirectories by project name."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

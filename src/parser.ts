@@ -157,11 +157,10 @@ function normalizeContent(content: string | ContentBlock[]): ContentBlock[] {
   return content ?? [];
 }
 
-/** Convert encoded dir name like "e--001Code-Jupyter-Trading" → "e:\001Code\Jupyter\Trading" */
+/** Convert encoded dir name like "C--Projects-MyApp" → "C:\Projects\MyApp" */
 function formatProjectName(dirName: string): string {
-  // Heuristic: two leading chars + '--' prefix pattern
-  // e--001Code-Jupyter-Trading → e:\001Code\Jupyter\Trading
-  // D--CC-Switch-main → D:\CC-Switch\main
+  // Heuristic: drive letter + '--' + path segments joined by '-'
+  // e.g. C--Users-Code-MyApp → C:\Users\Code\MyApp
   const match = dirName.match(/^([a-zA-Z])--(.+)$/);
   if (match) {
     const drive = match[1];

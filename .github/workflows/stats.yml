@@ -1,0 +1,30 @@
+name: Update Download Stats
+
+on:
+  schedule:
+    - cron: '0 8 * * *'   # daily at 08:00 UTC
+  workflow_dispatch:       # manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch stats and generate chart
+        run: node scripts/update-stats.js
+
+      - name: Commit updated stats
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats/downloads.json stats/downloads-chart.svg
+          git diff --cached --quiet || git commit -m "📊 Update download stats $(date -u +%Y-%m-%d)"
+          git push

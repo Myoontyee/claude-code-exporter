@@ -189,6 +189,10 @@ Claude 就拥有了上一次会话的完整上下文。这是目前 Claude Code 
 ---
 
 <p align="center">
+  <img src="stats/downloads-chart.svg" alt="Downloads Trend" width="720">
+</p>
+
+<p align="center">
   <sub>Built for developers who talk to AI all day and don't want to lose those conversations.</sub><br>
   <sub>为每天和 AI 对话、又不想丢失这些对话的开发者而造。</sub>
 </p>

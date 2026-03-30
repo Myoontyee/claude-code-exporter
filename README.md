@@ -96,6 +96,12 @@ Claude now has full context from the previous session. This is the closest thing
 | `claudeCodeExporter.includeToolDetails` | `true` | Include tool call details |
 | `claudeCodeExporter.claudeProjectsDir` | `~/.claude/projects` | Custom Claude projects path |
 
+### See Also
+
+| Extension | Description |
+|---|---|
+| **[Claude Code Prism](https://github.com/Myoontyee/claude-code-prism)** | Real-time HUD for Claude Code for VS Code — token usage, cost, context window and model info in your status bar |
+
 ### Compatibility
 
 - VS Code 1.85+ · Cursor · Claude Code CLI · Claude Code for VS Code
@@ -180,6 +186,12 @@ Claude 就拥有了上一次会话的完整上下文。这是目前 Claude Code 
 | `claudeCodeExporter.includeThinking` | `false` | 包含扩展思考块 |
 | `claudeCodeExporter.includeToolDetails` | `true` | 包含工具调用详情 |
 | `claudeCodeExporter.claudeProjectsDir` | `~/.claude/projects` | 自定义 Claude 项目目录 |
+
+### 相关扩展
+
+| 扩展 | 说明 |
+|---|---|
+| **[Claude Code Prism](https://github.com/Myoontyee/claude-code-prism)** | Claude Code for VS Code 的实时 HUD——状态栏显示 token 用量、费用、上下文窗口和模型信息 |
 
 ### 兼容性
 

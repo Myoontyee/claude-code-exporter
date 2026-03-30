@@ -5,12 +5,15 @@ import * as path from 'path';
 
 export interface RawLine {
   type: string;
+  subtype?: string;
   isMeta?: boolean;
+  isCompactSummary?: boolean;
   uuid?: string;
   parentUuid?: string | null;
   timestamp?: string;
   sessionId?: string;
   cwd?: string;
+  compactMetadata?: { trigger?: string; preTokens?: number };
   message?: {
     role: string;
     content: string | ContentBlock[];
@@ -92,8 +95,29 @@ export function parseSessionFile(filePath: string): ConversationSession {
       continue;
     }
 
-    // Skip infrastructure lines
-    if (obj.type === 'queue-operation' || obj.type === 'system') {
+    // Skip infrastructure lines (but handle compact_boundary)
+    if (obj.type === 'queue-operation') {
+      continue;
+    }
+
+    // Handle compact boundary marker
+    if (obj.type === 'system' && obj.subtype === 'compact_boundary') {
+      const trigger = obj.compactMetadata?.trigger ?? 'auto';
+      const tokens = obj.compactMetadata?.preTokens;
+      let label = `⟫ Conversation compacted (${trigger})`;
+      if (tokens) label += ` — ${tokens.toLocaleString()} tokens before compact`;
+      messages.push({
+        role: 'assistant',
+        timestamp: obj.timestamp ?? '',
+        blocks: [{ type: 'text', text: `---\n\n**${label}**\n\n---` }],
+        uuid: obj.uuid ?? '',
+      });
+      if (obj.timestamp) lastTimestamp = obj.timestamp;
+      continue;
+    }
+
+    // Skip other system lines
+    if (obj.type === 'system') {
       continue;
     }
 
@@ -114,6 +138,22 @@ export function parseSessionFile(filePath: string): ConversationSession {
 
     const role = obj.message.role as 'user' | 'assistant';
     const rawContent = obj.message.content;
+
+    // Handle compact summary — wrap it distinctly
+    if (obj.isCompactSummary) {
+      const summaryText = typeof rawContent === 'string' ? rawContent :
+        (rawContent ?? []).filter((b) => b.type === 'text').map((b) => (b as TextBlock).text).join('\n');
+      if (summaryText.trim()) {
+        messages.push({
+          role: 'user',
+          timestamp: obj.timestamp ?? '',
+          blocks: [{ type: 'text', text: `<details>\n<summary><b>Compact Summary (auto-generated context from previous conversation)</b></summary>\n\n${summaryText.trim()}\n\n</details>` }],
+          uuid: obj.uuid ?? '',
+        });
+      }
+      continue;
+    }
+
     const blocks = normalizeContent(rawContent);
 
     // Skip messages that are ONLY tool_result (internal plumbing) or empty

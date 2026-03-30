@@ -189,7 +189,9 @@ Claude 就拥有了上一次会话的完整上下文。这是目前 Claude Code 
 ---
 
 <p align="center">
-  <img src="stats/downloads-chart.svg" alt="Downloads Trend" width="720">
+  <a href="https://github.com/Myoontyee/claude-code-exporter/blob/main/stats/downloads-chart.svg">
+    <img src="https://raw.githubusercontent.com/Myoontyee/claude-code-exporter/main/stats/downloads-chart.png" alt="Downloads Trend" width="720">
+  </a>
 </p>
 
 <p align="center">

@@ -10,6 +10,7 @@ const http = require('http');
 
 const STATS_FILE = path.join(__dirname, '..', 'stats', 'downloads.json');
 const CHART_FILE = path.join(__dirname, '..', 'stats', 'downloads-chart.svg');
+const PNG_FILE = path.join(__dirname, '..', 'stats', 'downloads-chart.png');
 const EXT_ID = 'myoontyee.claude-code-exporter';
 
 // ── Fetch helpers ────────────────────────────────────────────────────────────
@@ -160,8 +161,17 @@ async function main() {
   records = records.slice(-365);
 
   fs.writeFileSync(STATS_FILE, JSON.stringify(records, null, 2) + '\n', 'utf8');
-  fs.writeFileSync(CHART_FILE, generateChart(records), 'utf8');
-  console.log('Updated stats/downloads.json and stats/downloads-chart.svg');
+  const svg = generateChart(records);
+  fs.writeFileSync(CHART_FILE, svg, 'utf8');
+
+  // Convert SVG to PNG using sharp
+  try {
+    const sharp = require('sharp');
+    await sharp(Buffer.from(svg)).png().toFile(PNG_FILE);
+    console.log('Updated stats/downloads.json, downloads-chart.svg, and downloads-chart.png');
+  } catch (e) {
+    console.log('Updated stats/downloads.json and downloads-chart.svg (PNG conversion skipped: ' + e.message + ')');
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

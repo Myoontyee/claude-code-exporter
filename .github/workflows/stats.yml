@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install sharp for PNG generation
+        run: npm install sharp
+
       - name: Fetch stats and generate chart
         run: node scripts/update-stats.js
 
@@ -25,6 +28,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add stats/downloads.json stats/downloads-chart.svg
-          git diff --cached --quiet || git commit -m "📊 Update download stats $(date -u +%Y-%m-%d)"
+          git add stats/downloads.json stats/downloads-chart.svg stats/downloads-chart.png
+          git diff --cached --quiet || git commit -m "Update download stats $(date -u +%Y-%m-%d)"
           git push

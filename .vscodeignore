@@ -2,6 +2,7 @@
 !dist/extension.js
 !dist/extension.js.map
 !images/icon.png
+!images/icon-mono.svg
 !package.json
 !LICENSE
 !README.md

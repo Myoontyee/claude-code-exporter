@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+  <!-- Sparkle (4-point star) -->
+  <path d="M10.5 3 Q12 9, 12 12 Q12 15, 10.5 21 Q9 15, 3 12 Q9 9, 10.5 3Z"/>
+  <!-- Export arrow (detached right point) -->
+  <polygon points="14.5,8.5 21,12 14.5,15.5"/>
+</svg>

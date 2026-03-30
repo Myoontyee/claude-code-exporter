@@ -2,7 +2,7 @@
   "name": "claude-code-exporter",
   "displayName": "Claude Code Exporter",
   "description": "Auto-export Claude Code CLI conversations to Markdown files. Watches ~/.claude/projects/ and keeps your chat history as readable .md files.",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "myoontyee",
   "engines": {
     "vscode": "^1.85.0"
@@ -35,7 +35,7 @@
         {
           "id": "claude-code-exporter",
           "title": "Claude Code Exporter",
-          "icon": "$(comment-discussion)"
+          "icon": "images/icon-mono.svg"
         }
       ]
     },
@@ -43,8 +43,7 @@
       "claude-code-exporter": [
         {
           "id": "claudeCodeExporterSessions",
-          "name": "Sessions",
-          "icon": "$(comment-discussion)"
+          "name": "Sessions"
         }
       ]
     },

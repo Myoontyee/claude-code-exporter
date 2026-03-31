@@ -33,6 +33,8 @@ export class MarkdownExporter {
 
   /**
    * Export a single session JSONL into the workspace's .cc-history/ folder.
+   * If a file for this session already exists (matched by shortId), overwrite
+   * its content but KEEP the existing filename (supports user renames).
    * Returns the output path.
    */
   exportSessionToWorkspace(
@@ -49,10 +51,35 @@ export class MarkdownExporter {
         : this.renderReadable(session, options);
 
     const outDir = path.join(workspaceRoot, '.cc-history');
-    const outPath = path.join(outDir, this.buildFilename(session, options));
     fs.mkdirSync(outDir, { recursive: true });
+
+    // Try to find an existing file for this session (by shortId)
+    const shortId = session.sessionId.split('-')[0];
+    const suffix = options.exportFormat === 'compact' ? '_compact' : '';
+    const existingFile = this.findExistingFile(outDir, shortId, suffix);
+
+    const outPath = existingFile
+      ? path.join(outDir, existingFile)
+      : path.join(outDir, this.buildFilename(session, options));
+
     fs.writeFileSync(outPath, markdown, 'utf8');
     return outPath;
+  }
+
+  /**
+   * Find an existing .md file in outDir that matches the given shortId.
+   * Returns the filename (not full path) if found, or null.
+   */
+  private findExistingFile(outDir: string, shortId: string, suffix: string): string | null {
+    try {
+      const files = fs.readdirSync(outDir);
+      const pattern = suffix
+        ? new RegExp(`_${shortId}${suffix}\\.md$`)
+        : new RegExp(`_${shortId}\\.md$`);
+      return files.find((f) => pattern.test(f)) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**

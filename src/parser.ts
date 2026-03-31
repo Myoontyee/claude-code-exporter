@@ -13,6 +13,7 @@ export interface RawLine {
   timestamp?: string;
   sessionId?: string;
   cwd?: string;
+  customTitle?: string;
   compactMetadata?: { trigger?: string; preTokens?: number };
   message?: {
     role: string;
@@ -72,6 +73,7 @@ export interface ConversationSession {
   startTime: string;
   endTime: string;
   cwd: string;
+  customTitle: string;
   messages: ConversationMessage[];
 }
 
@@ -84,6 +86,7 @@ export function parseSessionFile(filePath: string): ConversationSession {
   const messages: ConversationMessage[] = [];
   let sessionId = path.basename(filePath, '.jsonl');
   let cwd = '';
+  let customTitle = '';
   let firstTimestamp = '';
   let lastTimestamp = '';
 
@@ -92,6 +95,12 @@ export function parseSessionFile(filePath: string): ConversationSession {
     try {
       obj = JSON.parse(line);
     } catch {
+      continue;
+    }
+
+    // Capture custom title (user rename)
+    if (obj.type === 'custom-title' && obj.customTitle) {
+      customTitle = obj.customTitle;
       continue;
     }
 
@@ -186,6 +195,7 @@ export function parseSessionFile(filePath: string): ConversationSession {
     startTime: firstTimestamp,
     endTime: lastTimestamp,
     cwd,
+    customTitle,
     messages,
   };
 }

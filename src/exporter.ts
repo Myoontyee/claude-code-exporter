@@ -33,8 +33,9 @@ export class MarkdownExporter {
 
   /**
    * Export a single session JSONL into the workspace's .cc-history/ folder.
-   * If a file for this session already exists (matched by shortId), overwrite
-   * its content but KEEP the existing filename (supports user renames).
+   * If a file for this session already exists (matched by shortId):
+   *   - If session has a customTitle, rename the file to match the new title
+   *   - Otherwise, overwrite content but keep the existing filename
    * Returns the output path.
    */
   exportSessionToWorkspace(
@@ -58,9 +59,26 @@ export class MarkdownExporter {
     const suffix = options.exportFormat === 'compact' ? '_compact' : '';
     const existingFile = this.findExistingFile(outDir, shortId, suffix);
 
-    const outPath = existingFile
-      ? path.join(outDir, existingFile)
-      : path.join(outDir, this.buildFilename(session, options));
+    // Build the ideal filename (uses customTitle if available)
+    const idealName = this.buildFilename(session, options);
+
+    let outPath: string;
+    if (existingFile) {
+      if (session.customTitle && existingFile !== idealName) {
+        // Title changed — rename the file
+        const oldPath = path.join(outDir, existingFile);
+        const newPath = path.join(outDir, idealName);
+        if (!fs.existsSync(newPath)) {
+          fs.renameSync(oldPath, newPath);
+        }
+        outPath = newPath;
+      } else {
+        // No title change — overwrite in place
+        outPath = path.join(outDir, existingFile);
+      }
+    } else {
+      outPath = path.join(outDir, idealName);
+    }
 
     fs.writeFileSync(outPath, markdown, 'utf8');
     return outPath;
@@ -111,22 +129,26 @@ export class MarkdownExporter {
 
   // ─── Filename ─────────────────────────────────────────────────────────────
 
-  private buildFilename(session: ConversationSession, opts: ExportOptions): string {
+  buildFilename(session: ConversationSession, opts: ExportOptions): string {
     const date = session.startTime
       ? fmtFileTimestamp(new Date(session.startTime))
       : 'unknown-date';
 
-    // Use first user message as part of filename
+    // Prefer customTitle (user rename), fall back to first user message
     let preview = '';
-    for (const msg of session.messages) {
-      if (msg.role === 'user') {
-        for (const b of msg.blocks) {
-          if (b.type === 'text') {
-            preview = (b as TextBlock).text?.trim().slice(0, 40) ?? '';
-            break;
+    if (session.customTitle) {
+      preview = session.customTitle.trim().slice(0, 40);
+    } else {
+      for (const msg of session.messages) {
+        if (msg.role === 'user') {
+          for (const b of msg.blocks) {
+            if (b.type === 'text') {
+              preview = (b as TextBlock).text?.trim().slice(0, 40) ?? '';
+              break;
+            }
           }
+          if (preview) break;
         }
-        if (preview) break;
       }
     }
     // Sanitize
@@ -153,6 +175,7 @@ export class MarkdownExporter {
     lines.push('');
     lines.push(`| Field | Value |`);
     lines.push(`|---|---|`);
+    if (session.customTitle) lines.push(`| **Title** | ${session.customTitle} |`);
     lines.push(`| **Project** | \`${session.projectName}\` |`);
     lines.push(`| **Session ID** | \`${session.sessionId}\` |`);
     if (session.cwd) lines.push(`| **Working Dir** | \`${session.cwd}\` |`);
@@ -260,6 +283,128 @@ export class MarkdownExporter {
       default:
         return '';
     }
+  }
+
+  // ─── Tidy History ───────────────────────────────────────────────────────────
+
+  /**
+   * Tidy up .cc-history/ folder:
+   * 1. Merge duplicate files with same shortId (keep the larger/newer one)
+   * 2. Rename old files missing timestamps to include full timestamp
+   * Returns { renamed, merged, errors } counts.
+   */
+  tidyHistory(
+    ccHistoryDir: string,
+    claudeProjectDir?: string
+  ): { renamed: number; merged: number; errors: number } {
+    if (!fs.existsSync(ccHistoryDir)) return { renamed: 0, merged: 0, errors: 0 };
+
+    let renamed = 0;
+    let merged = 0;
+    let errors = 0;
+
+    const files = fs.readdirSync(ccHistoryDir).filter((f) => f.endsWith('.md'));
+
+    // Group files by shortId
+    const byShortId = new Map<string, string[]>();
+    const shortIdPattern = /_([a-f0-9]{8})(?:_compact)?\.md$/;
+
+    for (const f of files) {
+      const m = f.match(shortIdPattern);
+      if (!m) continue;
+      const sid = m[1];
+      if (!byShortId.has(sid)) byShortId.set(sid, []);
+      byShortId.get(sid)!.push(f);
+    }
+
+    // Phase 1: Merge duplicates — keep the largest file, delete the rest
+    for (const [sid, group] of byShortId) {
+      if (group.length <= 1) continue;
+
+      // Sort by file size descending (largest = most complete)
+      group.sort((a, b) => {
+        try {
+          return fs.statSync(path.join(ccHistoryDir, b)).size -
+                 fs.statSync(path.join(ccHistoryDir, a)).size;
+        } catch { return 0; }
+      });
+
+      const keeper = group[0]; // largest
+      for (let i = 1; i < group.length; i++) {
+        try {
+          fs.unlinkSync(path.join(ccHistoryDir, group[i]));
+          merged++;
+        } catch {
+          errors++;
+        }
+      }
+
+      // Update the group to only contain the keeper
+      byShortId.set(sid, [keeper]);
+    }
+
+    // Phase 2: Rename files missing full timestamp (YYYY-MM-DD_HHmmss)
+    // Old format: 2026-03-28_preview_shortid.md (no time)
+    // New format: 2026-03-28_HHmmss_preview_shortid.md
+    const hasFullTimestamp = /^\d{4}-\d{2}-\d{2}_\d{6}_/;
+    const hasDateOnly = /^(\d{4}-\d{2}-\d{2})_(?!\d{6}_)/;
+
+    const currentFiles = fs.readdirSync(ccHistoryDir).filter((f) => f.endsWith('.md'));
+    for (const f of currentFiles) {
+      if (hasFullTimestamp.test(f)) continue; // already good
+      const dateMatch = f.match(hasDateOnly);
+      if (!dateMatch) continue;
+
+      // Try to get the actual timestamp from the JSONL source
+      const sidMatch = f.match(shortIdPattern);
+      if (!sidMatch) continue;
+      const sid = sidMatch[1];
+
+      let timestamp = '';
+
+      // Try to find the JSONL source and read startTime
+      if (claudeProjectDir) {
+        try {
+          const jsonls = fs.readdirSync(claudeProjectDir).filter((j) => j.endsWith('.jsonl'));
+          const match = jsonls.find((j) => j.startsWith(sid));
+          if (match) {
+            const session = parseSessionFile(path.join(claudeProjectDir, match));
+            if (session.startTime) {
+              timestamp = fmtFileTimestamp(new Date(session.startTime));
+            }
+          }
+        } catch { /* fallback below */ }
+      }
+
+      // Fallback: read file mtime
+      if (!timestamp) {
+        try {
+          const stat = fs.statSync(path.join(ccHistoryDir, f));
+          timestamp = fmtFileTimestamp(stat.mtime);
+        } catch { continue; }
+      }
+
+      // Build new name: replace "2026-03-28_" with "2026-03-28_HHmmss_"
+      const datePart = dateMatch[1];
+      const rest = f.slice(datePart.length + 1); // everything after "2026-03-28_"
+      const newName = `${timestamp}_${rest}`;
+
+      if (newName === f) continue;
+      // Avoid collision
+      if (fs.existsSync(path.join(ccHistoryDir, newName))) continue;
+
+      try {
+        fs.renameSync(
+          path.join(ccHistoryDir, f),
+          path.join(ccHistoryDir, newName)
+        );
+        renamed++;
+      } catch {
+        errors++;
+      }
+    }
+
+    return { renamed, merged, errors };
   }
 }
 

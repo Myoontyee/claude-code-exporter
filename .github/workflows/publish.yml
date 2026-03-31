@@ -32,6 +32,7 @@ jobs:
 
       - name: Publish to VS Code Marketplace
         run: npx vsce publish --allow-missing-repository -p ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
 
       - name: Create Open VSX namespace (if needed)
         run: npx ovsx create-namespace myoontyee -p ${{ secrets.OVSX_PAT }} || true

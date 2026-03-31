@@ -90,12 +90,28 @@ export function activate(context: vscode.ExtensionContext): void {
           description: 'Reveal the export folder in the file explorer',
           value: 'open',
         },
+        {
+          label: '$(tools)  Tidy .cc-history/',
+          description: 'Merge duplicates & fix timestamps',
+          value: 'tidy',
+        },
       ], { placeHolder: 'Claude Code Exporter' });
 
       if (!choice) return;
 
       if (choice.value === 'open') {
         openCcHistory(workspaceRoot);
+        return;
+      }
+
+      if (choice.value === 'tidy') {
+        const ccHistory = path.join(workspaceRoot, '.cc-history');
+        const result = exporter.tidyHistory(ccHistory, claudeProjectDir || undefined);
+        treeProvider.refresh();
+        vscode.window.showInformationMessage(
+          `Tidy done: ${result.merged} duplicates merged, ${result.renamed} files renamed` +
+          (result.errors > 0 ? `, ${result.errors} errors` : '')
+        );
         return;
       }
 
@@ -120,6 +136,21 @@ export function activate(context: vscode.ExtensionContext): void {
     // Open export folder
     vscode.commands.registerCommand('claudeCodeExporter.openExportFolder', () => {
       if (workspaceRoot) openCcHistory(workspaceRoot);
+    }),
+
+    // Tidy history — merge duplicates, fix timestamps
+    vscode.commands.registerCommand('claudeCodeExporter.tidyHistory', () => {
+      if (!workspaceRoot) {
+        vscode.window.showWarningMessage('No workspace open.');
+        return;
+      }
+      const ccHistory = path.join(workspaceRoot, '.cc-history');
+      const result = exporter.tidyHistory(ccHistory, claudeProjectDir || undefined);
+      treeProvider.refresh();
+      vscode.window.showInformationMessage(
+        `Tidy done: ${result.merged} duplicates merged, ${result.renamed} files renamed` +
+        (result.errors > 0 ? `, ${result.errors} errors` : '')
+      );
     }),
 
     // Export single session (from tree item context menu)

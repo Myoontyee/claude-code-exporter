@@ -83,17 +83,19 @@ export class SessionTreeProvider
         const session = parseSessionFile(file);
         const shortId = session.sessionId.split('-')[0];
 
-        // Find first user text as label
-        let label = `Session ${shortId}`;
-        for (const msg of session.messages) {
-          if (msg.role === 'user') {
-            for (const b of msg.blocks) {
-              if (b.type === 'text' && (b as TextBlock).text?.trim()) {
-                label = truncate((b as TextBlock).text.trim(), 50);
-                break;
+        // Prefer customTitle, fall back to first user message
+        let label = session.customTitle || `Session ${shortId}`;
+        if (!session.customTitle) {
+          for (const msg of session.messages) {
+            if (msg.role === 'user') {
+              for (const b of msg.blocks) {
+                if (b.type === 'text' && (b as TextBlock).text?.trim()) {
+                  label = truncate((b as TextBlock).text.trim(), 50);
+                  break;
+                }
               }
+              break;
             }
-            break;
           }
         }
 

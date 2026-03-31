@@ -73,6 +73,12 @@
         "category": "Claude Code Exporter"
       },
       {
+        "command": "claudeCodeExporter.tidyHistory",
+        "title": "Tidy History (Merge Duplicates & Fix Timestamps)",
+        "icon": "$(tools)",
+        "category": "Claude Code Exporter"
+      },
+      {
         "command": "claudeCodeExporter.exportSession",
         "title": "Export This Session",
         "icon": "$(export)",
@@ -112,6 +118,11 @@
           "command": "claudeCodeExporter.openExportFolder",
           "when": "view == claudeCodeExporterSessions",
           "group": "navigation@4"
+        },
+        {
+          "command": "claudeCodeExporter.tidyHistory",
+          "when": "view == claudeCodeExporterSessions",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
